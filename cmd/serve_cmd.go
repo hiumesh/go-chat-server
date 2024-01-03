@@ -5,7 +5,8 @@ import (
 
 	"github.com/hiumesh/go-chat-server/internal/api"
 	"github.com/hiumesh/go-chat-server/internal/conf"
-	"github.com/hiumesh/go-chat-server/internal/storage"
+	"github.com/hiumesh/go-chat-server/internal/redis_storage"
+	"github.com/hiumesh/go-chat-server/internal/scylla_storage"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -24,13 +25,21 @@ func serve(cmd *cobra.Command) {
 		logrus.WithError(err).Fatal("unable to load config")
 	}
 
-	db, err := storage.GetKeyspaceSession(globalConfig.DB)
+	logrus.Info(globalConfig.REDIS.URL)
+
+	db, err := scylla_storage.Dial(&globalConfig.DB)
 	if err != nil {
-		logrus.Fatalf("error opening database: %+v", err)
+		logrus.Fatalf("error opening scylla database: %+v", err)
 	}
 	defer db.Close()
 
-	api := api.NewAPIWithVersion(cmd.Context(), globalConfig, &db, "latest")
+	redisDb, err := redis_storage.Dial(&globalConfig.REDIS)
+	if err != nil {
+		logrus.Fatalf("error opening redis database: %+v", err)
+	}
+	defer redisDb.Close()
+
+	api := api.NewAPIWithVersion(cmd.Context(), globalConfig, db, redisDb, "latest")
 
 	addr := net.JoinHostPort(globalConfig.API.Host, globalConfig.API.Port)
 	logrus.Infof("GoTrue API started on: %s", addr)

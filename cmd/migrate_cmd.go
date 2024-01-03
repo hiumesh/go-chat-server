@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/hiumesh/go-chat-server/internal/storage"
+	"github.com/hiumesh/go-chat-server/internal/scylla_storage"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -17,18 +17,18 @@ func migrate(cmd *cobra.Command, args []string) {
 
 	globalConfig := loadGlobalConfig(cmd.Context())
 
-	db, err := storage.GetSession(globalConfig.DB)
+	db, err := scylla_storage.GetSession(globalConfig.DB)
 	if err != nil {
 		logrus.Fatalf("error opening database: %+v", err)
 	}
 	defer db.Close()
 
-	err = storage.CreateKeyspaceIfNotExist(globalConfig.DB)
+	err = scylla_storage.CreateKeyspaceIfNotExist(globalConfig.DB)
 	if err != nil {
 		logrus.Fatalf("error creating the keyspace: %+v", err)
 	}
 
-	err = storage.MigrateToKeyspace(cmd.Context(), globalConfig.DB)
+	err = scylla_storage.MigrateToKeyspace(cmd.Context(), globalConfig.DB)
 
 	if err != nil {
 		logrus.Fatalf("error migrating to the database: %+v", err)

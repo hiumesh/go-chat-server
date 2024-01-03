@@ -1,4 +1,4 @@
-package storage
+package scylla_storage
 
 import (
 	"context"
@@ -13,11 +13,14 @@ import (
 	"github.com/scylladb/gocqlx/v2/migrate"
 )
 
-type ScyllaDBConnection struct {
-}
-
-func Dial(config *conf.GlobalConfiguration) {
-
+func Dial(config *conf.DBConfiguration) (gocqlx.Session, error) {
+	clusterConfig := GetClusterConfig(config)
+	clusterConfig.Keyspace = config.Keyspace
+	session, err := gocqlx.WrapSession(clusterConfig.CreateSession())
+	if err != nil {
+		return session, err
+	}
+	return session, nil
 }
 
 func GetClusterConfig(config *conf.DBConfiguration) *gocql.ClusterConfig {

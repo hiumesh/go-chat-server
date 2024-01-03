@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/hiumesh/go-chat-server/internal/conf"
 	"github.com/hiumesh/go-chat-server/internal/websocket"
+	"github.com/redis/go-redis/v9"
 	"github.com/scylladb/gocqlx/v2"
 	"github.com/sirupsen/logrus"
 )
@@ -20,16 +21,16 @@ const (
 
 type API struct {
 	handler *gin.Engine
-	db      *gocqlx.Session
+	db      gocqlx.Session
 	config  *conf.GlobalConfiguration
 	version string
 }
 
-func NewAPI(globalConfig *conf.GlobalConfiguration, db *gocqlx.Session) *API {
-	return NewAPIWithVersion(context.Background(), globalConfig, db, defaultVersion)
+func NewAPI(globalConfig *conf.GlobalConfiguration, db gocqlx.Session, redisDb *redis.Client) *API {
+	return NewAPIWithVersion(context.Background(), globalConfig, db, redisDb, defaultVersion)
 }
 
-func NewAPIWithVersion(ctx context.Context, globalConfig *conf.GlobalConfiguration, db *gocqlx.Session, version string) *API {
+func NewAPIWithVersion(ctx context.Context, globalConfig *conf.GlobalConfiguration, db gocqlx.Session, redisDb *redis.Client, version string) *API {
 	api := API{config: globalConfig, db: db, version: version}
 
 	router := gin.Default()
