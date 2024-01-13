@@ -1,0 +1,44 @@
+version: '3.9'
+services:
+  gotrue:
+    image: gotrue
+    container_name: gotrue
+    ports:
+      - '9999:9999'
+    env_file:
+      - gotrue.env
+    depends_on:
+      - postgres
+  postgres:
+    image: gotrue_postgres
+    container_name: gotrue_postgres
+    ports:
+      - '5432:5432'
+    volumes:
+      - gotrue_postgres_volume:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=postgres
+      - DB_NAMESPACE=auth
+  redis: 
+    image: redis
+    container_name: redis
+    ports:
+      - '6379:6379'
+  scylla:
+    image: scylladb/scylla
+    container_name: scylladb
+    ports:
+      - '22:22'
+      - '7000:7000'
+      - '7001:7001'
+      - '9042:9042'
+      - '9160:9160'
+      - '9180:9180'
+    volumes:
+      - go_chat_server_scylladb:/var/lib/scylla
+volumes:
+  go_chat_server_scylladb:
+  gotrue_postgres_volume:
+    
