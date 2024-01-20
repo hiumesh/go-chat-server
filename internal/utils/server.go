@@ -3,6 +3,8 @@ package utils
 import (
 	"fmt"
 	"net"
+
+	"github.com/google/uuid"
 )
 
 func GetIPAddress() (string, error) {
@@ -17,4 +19,14 @@ func GetIPAddress() (string, error) {
 	}
 
 	return "", fmt.Errorf("unable to determine ip address")
+}
+
+func GenerateUniqueServerId() string {
+	// ipAddress, err := GetIPAddress();
+	// if err != nil {
+	// 	return "", err
+	// }
+	// serverName := fmt.Sprintf("%s-%s-%s", ipAddress, uuid.NewString(),)
+	serverId := uuid.NewString()
+	return serverId
 }

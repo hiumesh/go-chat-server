@@ -33,7 +33,7 @@ func serve(cmd *cobra.Command) {
 	}
 	defer db.Close()
 
-	redisDb, err := redis_storage.Dial(&globalConfig.REDIS)
+	redisDb, err := redis_storage.Dial(cmd.Context(), &globalConfig.REDIS)
 	if err != nil {
 		logrus.Fatalf("error opening redis database: %+v", err)
 	}

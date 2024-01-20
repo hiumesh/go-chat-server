@@ -1,8 +1,6 @@
 package conf
 
 import (
-	"fmt"
-	"log"
 	"os"
 
 	"github.com/gocql/gocql"
@@ -10,6 +8,11 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
 )
+
+type ServerConfiguration struct {
+	Id                   string
+	MaxPerUserConnection string `envconfig:"GO_SOCKET_MAX_PER_USER_CONNECTION" default:"2"`
+}
 
 type APIConfiguration struct {
 	Host string
@@ -25,6 +28,16 @@ type DBConfiguration struct {
 	Keyspace       string `envconfig:"GO_SOCKET_SCYLLA_KEYSPACE"`
 	MigrationsPath string `envconfig:"GO_SOCKET_SCYLLA_MIGRATIONS"`
 	ClusterConfig  gocql.ClusterConfig
+}
+
+type CookieConfiguration struct {
+	Key      string `json:"key"`
+	Domain   string `json:"domain"`
+	Duration int    `json:"duration"`
+}
+
+type JWTConfiguration struct {
+	Secret string `json:"secret" required:"true"`
 }
 
 func (c *DBConfiguration) Validate() error {
@@ -64,29 +77,14 @@ func (c *CORSConfiguration) AllAllowedHeaders(defaults []string) []string {
 }
 
 type GlobalConfiguration struct {
-	API   APIConfiguration
-	DB    DBConfiguration
-	REDIS REDISConfiguration
-	CORS  CORSConfiguration `json:"cors"`
+	SERVER ServerConfiguration
+	API    APIConfiguration
+	DB     DBConfiguration
+	REDIS  REDISConfiguration
+	CORS   CORSConfiguration   `json:"cors"`
+	JWT    JWTConfiguration    `json:"jwt"`
+	COOKIE CookieConfiguration `json:"cookies"`
 }
-
-func generateServerName(purpose, location string) (string, string, error) {
-	ipAddress, err := utils.GetIPAddress()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	serverName := fmt.Sprintf("%s-%s-%s", purpose, location, ipAddress)
-	return serverName, ipAddress, nil
-}
-
-// func init() {
-// 	location := os.Getenv("LOCATION")
-// 	if location == "" {
-// 		log.Fatal("LOCATION environment not found.")
-// 	}
-// 	generateServerName("websocket-server", location)
-// }
 
 func loadEnvironment(filename string) error {
 	var err error
@@ -111,7 +109,7 @@ func LoadGlobal(filename string) (*GlobalConfiguration, error) {
 		return nil, err
 	}
 
-	print(config)
+	config.SERVER.Id = utils.GenerateUniqueServerId()
 
 	if err := config.Validate(); err != nil {
 		return nil, err

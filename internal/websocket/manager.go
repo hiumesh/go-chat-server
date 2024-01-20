@@ -2,12 +2,16 @@ package websocket
 
 import (
 	"errors"
-	"log"
 	"net/http"
 	"sync"
 
 	"github.com/gin-gonic/gin"
 	_websocket "github.com/gorilla/websocket"
+	"github.com/hiumesh/go-chat-server/internal/conf"
+	"github.com/hiumesh/go-chat-server/internal/utils"
+	"github.com/redis/go-redis/v9"
+	"github.com/scylladb/gocqlx/v2"
+	"github.com/sirupsen/logrus"
 )
 
 var websocketUpgrader = _websocket.Upgrader{
@@ -18,9 +22,9 @@ var websocketUpgrader = _websocket.Upgrader{
 var ErrEventNotSupported = errors.New("this event type is not supported")
 
 type Manager struct {
-	clients ClientList
-	sync.RWMutex
+	clients  ClientList
 	handlers map[string]EventHandler
+	sync.RWMutex
 }
 
 func NewManager() *Manager {
@@ -65,28 +69,31 @@ func (m *Manager) removeClient(client *Client) {
 	}
 }
 
-func (m *Manager) ServeWS(ctx *gin.Context) {
-
-	log.Println("New Connection...")
-
-	conn, err := websocketUpgrader.Upgrade(ctx.Writer, ctx.Request, nil)
+func (m *Manager) ServeWS(ginCtx *gin.Context, config *conf.GlobalConfiguration, db gocqlx.Session, redisDb *redis.Client) {
+	conn, err := websocketUpgrader.Upgrade(ginCtx.Writer, ginCtx.Request, nil)
 
 	if err != nil {
-		log.Println(err)
+		conn.Close()
+		logrus.Fatalf("Failed to upgrage the connection: %+v", err)
+		utils.HandleHttpError(utils.InternalServerError("Failed to upgrage the connection: %+v", err), ginCtx)
 		return
 	}
 
-	client := NewClient(conn, m)
+	client, err := NewClient(ginCtx, conn, m, config, redisDb)
+	if err != nil {
+		conn.Close()
+		logrus.Fatalf("Failed to setup the connection: %+v", err)
+		utils.HandleHttpError(utils.InternalServerError("Failed to setup the connection: %+v", err), ginCtx)
+		return
+	}
 
 	m.addClient(client)
 
-	go client.readMessage()
-	go client.writeMessages()
+	go client.readMessage(ginCtx, config, redisDb)
+	go client.writeMessages(ginCtx, config, redisDb)
 }
 
 func checkOrigin(r *http.Request) bool {
-
-	// Grab the request origin
 	origin := r.Header.Get("Origin")
 
 	switch origin {

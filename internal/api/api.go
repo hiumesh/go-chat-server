@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -18,6 +19,8 @@ import (
 const (
 	defaultVersion = "default version"
 )
+
+var bearerRegexp = regexp.MustCompile(`^(?:B|b)earer (\S+$)`)
 
 type API struct {
 	handler *gin.Engine
@@ -46,11 +49,15 @@ func NewAPIWithVersion(ctx context.Context, globalConfig *conf.GlobalConfigurati
 
 	manager := websocket.NewManager()
 
+	router.Use(addUniqueRequestID(globalConfig))
+
 	router.GET("/", func(ctx *gin.Context) {
 		ctx.JSON(200, gin.H{"message": "ping"})
 	})
 
-	router.GET("/ws", manager.ServeWS)
+	router.Use(api.requireAuthentication).GET("/ws", func(ginCtx *gin.Context) {
+		manager.ServeWS(ginCtx, globalConfig, db, redisDb)
+	})
 
 	api.handler = router
 	return &api
