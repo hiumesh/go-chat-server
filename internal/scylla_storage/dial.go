@@ -3,7 +3,6 @@ package scylla_storage
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -43,7 +42,6 @@ func GetSession(config conf.DBConfiguration) (gocqlx.Session, error) {
 	clusterConfig := GetClusterConfig(&config)
 	session, err := gocqlx.WrapSession(clusterConfig.CreateSession())
 	if err != nil {
-		log.Fatal("An error occurred while creating DB session", err.Error())
 		return session, err
 	}
 	return session, nil

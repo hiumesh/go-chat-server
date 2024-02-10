@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"regexp"
@@ -47,7 +48,7 @@ func NewAPIWithVersion(ctx context.Context, globalConfig *conf.GlobalConfigurati
 	})
 	router.Use(corsHandler)
 
-	manager := websocket.NewManager()
+	manager := websocket.NewManager(ctx, globalConfig, redisDb, db)
 
 	router.Use(addUniqueRequestID(globalConfig))
 
@@ -56,7 +57,7 @@ func NewAPIWithVersion(ctx context.Context, globalConfig *conf.GlobalConfigurati
 	})
 
 	router.Use(api.requireAuthentication).GET("/ws", func(ginCtx *gin.Context) {
-		manager.ServeWS(ginCtx, globalConfig, db, redisDb)
+		manager.ServeWS(ginCtx)
 	})
 
 	api.handler = router
@@ -64,18 +65,34 @@ func NewAPIWithVersion(ctx context.Context, globalConfig *conf.GlobalConfigurati
 }
 
 func (a *API) ListenAndServe(ctx context.Context, hostAndPort string) {
-	baseCtx, _ := context.WithCancel(context.Background())
+	baseCtx, cancel := context.WithCancel(context.Background())
 
 	log := logrus.WithField("component", "api")
 
 	server := &http.Server{
 		Addr:              hostAndPort,
 		Handler:           a.handler,
-		ReadHeaderTimeout: 2 * time.Second, // to mitigate a Slowloris attack
+		ReadHeaderTimeout: 2 * time.Second,
 		BaseContext: func(net.Listener) context.Context {
 			return baseCtx
 		},
 	}
+
+	cleanupWaitGroup.Add(1)
+	go func() {
+		defer cleanupWaitGroup.Done()
+
+		<-ctx.Done()
+
+		defer cancel()
+
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), time.Minute)
+		defer shutdownCancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
+			log.WithError(err).Error("shutdown failed")
+		}
+	}()
 
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		log.WithError(err).Fatal("http server listen failed")

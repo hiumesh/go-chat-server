@@ -25,8 +25,6 @@ func serve(cmd *cobra.Command) {
 		logrus.WithError(err).Fatal("unable to load config")
 	}
 
-	logrus.Info(globalConfig.REDIS.URL)
-
 	db, err := scylla_storage.Dial(&globalConfig.DB)
 	if err != nil {
 		logrus.Fatalf("error opening scylla database: %+v", err)

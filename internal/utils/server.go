@@ -22,11 +22,6 @@ func GetIPAddress() (string, error) {
 }
 
 func GenerateUniqueServerId() string {
-	// ipAddress, err := GetIPAddress();
-	// if err != nil {
-	// 	return "", err
-	// }
-	// serverName := fmt.Sprintf("%s-%s-%s", ipAddress, uuid.NewString(),)
 	serverId := uuid.NewString()
 	return serverId
 }

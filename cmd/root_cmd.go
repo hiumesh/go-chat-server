@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/hiumesh/go-chat-server/internal/conf"
+	"github.com/hiumesh/go-chat-server/internal/observability"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -33,6 +34,10 @@ func loadGlobalConfig(ctx context.Context) *conf.GlobalConfiguration {
 	config, err := conf.LoadGlobal(configFile)
 	if err != nil {
 		logrus.Fatalf("Failed to load configuration: %+v", err)
+	}
+
+	if err := observability.ConfigureLogging(&config.LOGGING); err != nil {
+		logrus.WithError(err).Error("unable to configure logging")
 	}
 
 	return config

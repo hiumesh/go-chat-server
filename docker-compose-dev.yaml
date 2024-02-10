@@ -27,7 +27,7 @@ services:
     ports:
       - '6379:6379'
   scylla:
-    image: scylladb/scylla
+    image: scylladb/scylla:4.6.0
     container_name: scylladb
     ports:
       - '22:22'

@@ -3,24 +3,24 @@ package websocket
 import (
 	"encoding/json"
 	"errors"
-	"log"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	_websocket "github.com/gorilla/websocket"
-	"github.com/hiumesh/go-chat-server/internal/conf"
 	"github.com/hiumesh/go-chat-server/internal/utils"
 	"github.com/redis/go-redis/v9"
+	"github.com/sirupsen/logrus"
 )
 
 var pongWait = 10 * time.Second
 var pingInterval = (pongWait * 9) / 10
 var redisPingInterval = 60000000000
 
-type ClientList map[*Client]bool
+type ClientList map[string]*Client
 
 type Client struct {
+	claims       *utils.AccessTokenClaims
 	connectionId string
 	connection   *_websocket.Conn
 	manager      *Manager
@@ -28,7 +28,7 @@ type Client struct {
 	chatroom     string
 }
 
-func NewClient(ctx *gin.Context, conn *_websocket.Conn, manager *Manager, config *conf.GlobalConfiguration, redisDb *redis.Client) (*Client, error) {
+func NewClient(ctx *gin.Context, conn *_websocket.Conn, m *Manager) (*Client, error) {
 	uniqueConnectionId := utils.GetRequestID(ctx)
 	if uniqueConnectionId == "" {
 		return nil, errors.New("unique id not found")
@@ -38,48 +38,49 @@ func NewClient(ctx *gin.Context, conn *_websocket.Conn, manager *Manager, config
 		return nil, errors.New("claims not found")
 	}
 
-	log.Println(uniqueConnectionId, claims)
+	key := claims.Subject
+	value := m.config.SERVER.Id + " " + uniqueConnectionId
 
-	key := claims.Id
-	value := config.SERVER.Id + " " + uniqueConnectionId
-
-	if err := redisDb.ZRemRangeByScore(ctx, key, "-inf", strconv.Itoa(int(time.Now().UnixMilli()-300000))).Err(); err != nil {
+	if err := m.rdb.ZRemRangeByScore(ctx, key, "-inf", strconv.Itoa(int(time.Now().UnixMilli()-300000))).Err(); err != nil {
 		return nil, err
 	}
 
-	count, err := redisDb.ZCount(ctx, key, "-inf", "+inf").Result()
+	count, err := m.rdb.ZCount(ctx, key, "-inf", "+inf").Result()
 	if err != nil {
 		return nil, err
 	}
 
-	mspu, err := strconv.Atoi(config.SERVER.MaxPerUserConnection)
+	mspu, err := strconv.Atoi(m.config.SERVER.MaxPerUserConnection)
 
 	if err != nil {
 		return nil, err
 	}
 	if count >= int64(mspu) {
-		return nil, errors.New("maximum_connection_limit_reached")
+		return nil, errors.New("maximum connection limit reached")
 	}
-	if err := redisDb.ZAdd(ctx, key, redis.Z{Score: float64(time.Now().UnixMilli()), Member: value}).Err(); err != nil {
+	if err := m.rdb.ZAdd(ctx, key, redis.Z{Score: float64(time.Now().UnixMilli()), Member: value}).Err(); err != nil {
 		return nil, err
 	}
 
 	return &Client{
+		claims:       claims,
 		connectionId: uniqueConnectionId,
 		connection:   conn,
-		manager:      manager,
+		manager:      m,
 		egress:       make(chan Event),
 	}, nil
 }
 
-func (c *Client) readMessage(ctx *gin.Context, config *conf.GlobalConfiguration, redisDb *redis.Client) {
+func (c *Client) readMessage(ctx *gin.Context) {
 	defer func() {
 		c.manager.removeClient(c)
+
+		logrus.Debugf("exiting reader: %v", c.connectionId)
 	}()
 
 	c.connection.SetReadLimit(512)
 	if err := c.connection.SetReadDeadline(time.Now().Add(pongWait)); err != nil {
-		log.Println(err)
+		logrus.Errorf("error configuring the connection: %v", err)
 		return
 	}
 	c.connection.SetPongHandler(c.pongHandler)
@@ -89,33 +90,35 @@ func (c *Client) readMessage(ctx *gin.Context, config *conf.GlobalConfiguration,
 
 		if err != nil {
 			if _websocket.IsUnexpectedCloseError(err, _websocket.CloseGoingAway, _websocket.CloseAbnormalClosure) {
-				log.Printf("error reading message: %v", err)
+				logrus.Errorf("error reading message: %v", err)
 			}
-			break
+			return
 		}
 
 		var request Event
 		if err := json.Unmarshal(payload, &request); err != nil {
-			log.Printf("error marshalling message: %v", err)
-			break
+			logrus.Errorf("error marshalling message: %v", err)
+			continue
 		}
 
-		if err := c.manager.routeEvent(request, c); err != nil {
-			log.Println("Error handeling Message: ", err)
+		if err := c.manager.routeEvent(ctx, request, c); err != nil {
+			logrus.Errorf("error handeling message: %v", err)
 		}
 	}
 }
 
-func (c *Client) writeMessages(ctx *gin.Context, config *conf.GlobalConfiguration, redisDb *redis.Client) {
-	key := "userId"
-	value := config.SERVER.Id + " " + c.connectionId
+func (c *Client) writeMessages(ctx *gin.Context) {
+	claims := utils.GetClaims(ctx)
+	value := c.manager.config.SERVER.Id + " " + c.connectionId
 	ticker := time.NewTicker(pingInterval)
 	redisPingTicker := time.NewTicker(time.Duration(redisPingInterval))
 	defer func() {
 		ticker.Stop()
 		redisPingTicker.Stop()
-		redisDb.SRem(ctx, key, value).Err()
+		c.manager.rdb.SRem(ctx, claims.Subject, value).Err()
 		c.manager.removeClient(c)
+
+		logrus.Debugf("exiting writer: %v", c.connectionId)
 	}()
 
 	for {
@@ -123,32 +126,30 @@ func (c *Client) writeMessages(ctx *gin.Context, config *conf.GlobalConfiguratio
 		case message, ok := <-c.egress:
 			if !ok {
 				if err := c.connection.WriteMessage(_websocket.CloseMessage, nil); err != nil {
-					log.Println("connection closed: ", err)
+					logrus.Errorf("exiting the writer: %v", err)
 				}
 				return
 			}
 
 			data, err := json.Marshal(message)
 			if err != nil {
-				log.Println(err)
-				return
+				logrus.Errorf("error marshaling the socket message: %v", err)
+				continue
 			}
 
 			if err := c.connection.WriteMessage(_websocket.TextMessage, data); err != nil {
-				log.Println(err)
+				logrus.Errorf("error writing the socket message: %v", err)
 			}
-			log.Println("sent message")
+			logrus.Debugf("message sent")
 		case <-ticker.C:
-			// log.Println("ping")
 			if err := c.connection.WriteMessage(_websocket.PingMessage, []byte{}); err != nil {
-				log.Println("writemsg: ", err)
+				logrus.Errorf("ping message fail: %v", err)
 				return
 			}
 
 		case <-redisPingTicker.C:
-			log.Println("redis ping")
-			if err := redisDb.ZIncrBy(ctx, key, 60000, value).Err(); err != nil {
-				log.Println("redis ping error: ", err)
+			if err := c.manager.rdb.ZIncrBy(ctx, claims.Subject, 60000, value).Err(); err != nil {
+				logrus.Errorf("redis ping fail: %v", err)
 			}
 		}
 

@@ -33,13 +33,12 @@ func (a *API) parseJWTClaims(bearer string, ctx *gin.Context) (context.Context, 
 	return ctx, nil
 }
 
-// requireAuthentication checks incoming requests for tokens presented using the Authorization header
 func (a *API) requireAuthentication(ctx *gin.Context) {
 	token, err := a.extractBearerToken(ctx)
 	config := a.config
 	if err != nil {
 		a.clearCookieTokens(config, ctx.Writer)
-		logrus.Error("Authentication Error: ", err)
+		logrus.Errorf("authentication error: %v", err)
 		ctx.AbortWithStatusJSON(err.Code, err)
 		return
 	}
@@ -47,7 +46,7 @@ func (a *API) requireAuthentication(ctx *gin.Context) {
 	_, err = a.parseJWTClaims(token, ctx)
 	if err != nil {
 		a.clearCookieTokens(config, ctx.Writer)
-		logrus.Error("Authentication Error: ", err)
+		logrus.Errorf("authentication error: %v", err)
 		ctx.AbortWithStatusJSON(err.Code, err)
 		return
 	}

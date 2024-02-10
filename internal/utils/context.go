@@ -34,12 +34,10 @@ const (
 	requestIDKey = contextKey("request_id")
 )
 
-// withToken adds the JWT token to the context.
 func WithToken(ctx *gin.Context, token *jwt.Token) {
 	ctx.Set(string(tokenKey), token)
 }
 
-// getToken reads the JWT token from the context.
 func GetToken(ctx *gin.Context) *jwt.Token {
 	obj, exists := ctx.Get(string(tokenKey))
 	if !exists || obj == nil {
@@ -61,12 +59,10 @@ func WithRequestID(ctx *gin.Context, id string) {
 	ctx.Set(string(requestIDKey), id)
 }
 
-// getRequestID reads the request ID from the context.
 func GetRequestID(ctx *gin.Context) string {
 	obj, exists := ctx.Get(string(requestIDKey))
 	if !exists || obj == nil {
 		return ""
 	}
-
 	return obj.(string)
 }

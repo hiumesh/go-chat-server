@@ -77,13 +77,14 @@ func (c *CORSConfiguration) AllAllowedHeaders(defaults []string) []string {
 }
 
 type GlobalConfiguration struct {
-	SERVER ServerConfiguration
-	API    APIConfiguration
-	DB     DBConfiguration
-	REDIS  REDISConfiguration
-	CORS   CORSConfiguration   `json:"cors"`
-	JWT    JWTConfiguration    `json:"jwt"`
-	COOKIE CookieConfiguration `json:"cookies"`
+	SERVER  ServerConfiguration
+	API     APIConfiguration
+	DB      DBConfiguration
+	REDIS   REDISConfiguration
+	CORS    CORSConfiguration   `json:"cors"`
+	JWT     JWTConfiguration    `json:"jwt"`
+	COOKIE  CookieConfiguration `json:"cookies"`
+	LOGGING LoggingConfig       `envconfig:"LOG"`
 }
 
 func loadEnvironment(filename string) error {
@@ -105,7 +106,7 @@ func LoadGlobal(filename string) (*GlobalConfiguration, error) {
 	}
 
 	config := new(GlobalConfiguration)
-	if err := envconfig.Process("gosocket", config); err != nil {
+	if err := envconfig.Process("go_socket", config); err != nil {
 		return nil, err
 	}
 
